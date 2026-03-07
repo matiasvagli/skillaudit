@@ -118,9 +118,9 @@ def create_sandbox(package_dir: Path) -> Generator[SandboxContainer, None, None]
 
 def _install_npm_deps(container) -> None:
     """npm install dentro del container (sin red — usa el package bundleado)."""
-    # Intentamos con --prefer-offline primero
+    # Intentamos con --prefer-offline primero, limitando a 15 segundos para evitar cuelgues sin red
     exit_code, output = container.exec_run(
-        ["npm", "install", "--prefer-offline", "--production"],
+        ["timeout", "15", "npm", "install", "--prefer-offline", "--production"],
         workdir="/app",
     )
     # Si falla (package no tiene deps bundleadas, lo ignoramos)

@@ -137,7 +137,7 @@ server.stderr.on('data', (chunk) => {{
 let idx = 0;
 function sendNext() {{
   if (idx >= messages.length) {{
-    setTimeout(() => server.kill(), 2000);
+    setTimeout(() => {{ server.kill(); process.exit(0); }}, 2000);
     return;
   }}
   const msg = messages[idx++];
