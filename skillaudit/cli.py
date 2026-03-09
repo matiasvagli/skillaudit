@@ -18,7 +18,7 @@ from .downloader import download_package
 from .extractor import extract_metadata
 from .scenario_generator import generate_scenarios
 from .sandbox_runner import create_sandbox
-from .mcp_executor import run_scenarios, _build_driver_script, _discover_entrypoint
+from .mcp_executor import run_scenarios, _build_driver_script, _discover_entrypoint, discover_tools
 from .behavior_monitor import capture_behavior
 from .log_analyzer import analyze_behavior
 from .report_generator import generate_report
@@ -121,8 +121,19 @@ def test(package_name: str, output_dir: str, ai_provider: str | None, verbose: b
 
         console.print(f"   [green]✓[/green] [bold]{metadata.package_name}@{metadata.version}[/bold]")
         console.print(f"   [dim]\"{metadata.short_description}\"[/dim]")
+        if not metadata.tools:
+            with _step("🔍 Descubriendo herramientas dinámicamente..."):
+                try:
+                    with create_sandbox(package_dir) as discovery_sandbox:
+                        entrypoint = metadata.entrypoint or _discover_entrypoint(discovery_sandbox)
+                        metadata.tools = discover_tools(discovery_sandbox, entrypoint)
+                except Exception as e:
+                    console.print(f"   [yellow]⚠️  No se pudo descubrir dinámicamente: {e}[/yellow]")
+
         if metadata.tools:
-            console.print(f"   [dim]Tools declaradas: {', '.join(t.name for t in metadata.tools)}[/dim]")
+            console.print(f"   [dim]Tools detectadas: {', '.join(t.name for t in metadata.tools)}[/dim]")
+        else:
+            console.print("   [yellow]⚠️  No se detectaron tools en este package.[/yellow]")
         console.print()
 
         # ── PASO 3: Generar scenarios con IA ─────────────────────────────
@@ -341,3 +352,7 @@ class _step:
 
 def _fail(msg: str) -> None:
     console.print(f"[bold red]❌ {msg}[/bold red]")
+
+
+if __name__ == "__main__":
+    cli()

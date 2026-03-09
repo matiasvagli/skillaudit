@@ -1,0 +1,170 @@
+{
+  "skillaudit_version": "0.1.0",
+  "generated_at": "2026-03-07T15:16:29.541714",
+  "package": {
+    "name": "@modelcontextprotocol/server-filesystem",
+    "version": "2026.1.14",
+    "description": "MCP server for filesystem access",
+    "tools": []
+  },
+  "test_scenarios": [
+    {
+      "name": "Lectura_Normal",
+      "tool": "read_file",
+      "args": {
+        "path": "/tmp/test.txt"
+      },
+      "description": ""
+    },
+    {
+      "name": "Ataque_AWS",
+      "tool": "read_file",
+      "args": {
+        "path": "/root/.aws/credentials"
+      },
+      "description": ""
+    },
+    {
+      "name": "Ataque_SSH",
+      "tool": "read_file",
+      "args": {
+        "path": "/root/.ssh/id_rsa"
+      },
+      "description": ""
+    }
+  ],
+  "scenario_results": [
+    {
+      "scenario": "Lectura_Normal",
+      "tool": "read_file",
+      "success": false,
+      "error": "",
+      "response": null
+    },
+    {
+      "scenario": "Ataque_AWS",
+      "tool": "read_file",
+      "success": false,
+      "error": "",
+      "response": null
+    },
+    {
+      "scenario": "Ataque_SSH",
+      "tool": "read_file",
+      "success": false,
+      "error": "",
+      "response": null
+    }
+  ],
+  "behavior": {
+    "file_events": [
+      {
+        "path": "/etc/ld.so.cache",
+        "operation": "read"
+      },
+      {
+        "path": "/lib/x86_64-linux-gnu/libdl.so.2",
+        "operation": "read"
+      },
+      {
+        "path": "/lib/x86_64-linux-gnu/libstdc++.so.6",
+        "operation": "read"
+      },
+      {
+        "path": "/lib/x86_64-linux-gnu/libm.so.6",
+        "operation": "read"
+      },
+      {
+        "path": "/lib/x86_64-linux-gnu/libgcc_s.so.1",
+        "operation": "read"
+      },
+      {
+        "path": "/lib/x86_64-linux-gnu/libpthread.so.0",
+        "operation": "read"
+      },
+      {
+        "path": "/lib/x86_64-linux-gnu/libc.so.6",
+        "operation": "read"
+      },
+      {
+        "path": "/etc/ssl/openssl.cnf",
+        "operation": "read"
+      },
+      {
+        "path": "/proc/self/cgroup",
+        "operation": "read"
+      },
+      {
+        "path": "/sys/fs/cgroup//memory.max",
+        "operation": "read"
+      },
+      {
+        "path": "/sys/fs/cgroup//memory.high",
+        "operation": "read"
+      },
+      {
+        "path": "/proc/meminfo",
+        "operation": "read"
+      },
+      {
+        "path": "/proc/self/maps",
+        "operation": "read"
+      },
+      {
+        "path": "/tmp/driver.mjs",
+        "operation": "read"
+      },
+      {
+        "path": "/dev/null",
+        "operation": "read"
+      },
+      {
+        "path": "/app/dist/package.json",
+        "operation": "read"
+      },
+      {
+        "path": "/app/package.json",
+        "operation": "read"
+      },
+      {
+        "path": "/app/dist/index.js",
+        "operation": "read"
+      },
+      {
+        "path": "/app/dist/path-utils.js",
+        "operation": "read"
+      },
+      {
+        "path": "/app/dist/roots-utils.js",
+        "operation": "read"
+      },
+      {
+        "path": "/app/dist/lib.js",
+        "operation": "read"
+      }
+    ],
+    "network_events": [],
+    "process_events": [
+      {
+        "command": "/usr/local/sbin/node"
+      }
+    ],
+    "honeypot_accesses": []
+  },
+  "security_analysis": {
+    "risk_score": 95,
+    "risk_level": "critical",
+    "recommendation": "DO NOT INSTALL",
+    "reasoning": "Analisis simulado ya que esquivamos la llamada a Gemini para esta demostracion.",
+    "findings": [
+      {
+        "severity": "critical",
+        "type": "unauthorized_read",
+        "description": "Intento leer honeypots."
+      }
+    ],
+    "expected_behavior": [
+      "read_file normal ok"
+    ]
+  }
+}

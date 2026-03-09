@@ -81,8 +81,9 @@ def create_sandbox(package_dir: Path) -> Generator[SandboxContainer, None, None]
             "Buildéala con: cd skillaudit/sandbox && docker build -t skillaudit-sandbox:latest ."
         )
 
+    IMAGE_NAME = config.SANDBOX_IMAGE
     container = client.containers.run(
-        image=config.SANDBOX_IMAGE,
+        image=IMAGE_NAME,
         command="sleep infinity",  # Mantenemos el container vivo; ejecutamos via exec
         network_mode="none",       # Sin red — aislamiento total
         volumes={
@@ -109,6 +110,8 @@ def create_sandbox(package_dir: Path) -> Generator[SandboxContainer, None, None]
     try:
         # Instalar dependencias NPM dentro del sandbox
         _install_npm_deps(container)
+        # Instalar dependencias Python dentro del sandbox
+        _install_python_deps(container)
         # Inyectar honeypots
         _inject_honeypots(container)
         yield sandbox
@@ -140,3 +143,14 @@ def _inject_honeypots(container) -> None:
     ssh_tar = _create_tar_stream(HONEYPOT_SSH, "id_rsa")
     container.put_archive("/root/.ssh", ssh_tar)
     container.exec_run(["chmod", "600", "/root/.ssh/id_rsa"])
+
+
+def _install_python_deps(container) -> None:
+    """pip install dentro del container (sin red — intenta usar cache o bundle)."""
+    # Intentar instalar desde pyproject.toml o requirements.txt si existen
+    # Nota: sin red esto fallará a menos que el package sea un wheel ya funcional
+    # o hayamos montado las deps. Pero por ahora, intentamos lo básico.
+    container.exec_run(
+        ["timeout", "30", "pip", "install", ".", "--prefer-offline", "--no-input"],
+        workdir="/app",
+    )

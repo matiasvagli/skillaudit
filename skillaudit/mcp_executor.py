@@ -42,28 +42,31 @@ def run_scenarios(
 
     # Construimos la secuencia de mensajes JSON-RPC para enviar al server
     messages = _build_jsonrpc_sequence(scenarios)
-    input_data = "\n".join(json.dumps(m) for m in messages) + "\n"
 
-    # Ejecutamos el MCP server con toda la entrada de golpe (stdin pipe)
-    exit_code, raw_output = sandbox.exec_run(
-        ["node", entrypoint],
-        stdin=True,
-        socket=False,
-    )
-
-    # Alternativa: ejecutar via shell con stdin heredoc
-    # Usamos un script Python dentro del container para manejar el protocolo stdio
-    stdin_script = _build_driver_script(entrypoint, messages)
-    exit_code, raw_output = sandbox.exec_run(
-        ["node", "--input-type=module", "-e", stdin_script],
-    )
-
-    stdout_str = raw_output.decode("utf-8", errors="replace") if raw_output else ""
+    # Ejecutar el driver adaptado
+    exit_code, raw_output = _run_with_driver(sandbox, entrypoint, messages)
+    stdout_str = raw_output.decode("utf-8", errors="replace")
 
     # Parsear las respuestas JSON-RPC del stdout
     results = _parse_responses(scenarios, stdout_str)
 
     return results, stdout_str, ""
+
+
+def _run_with_driver(sandbox: SandboxContainer, entrypoint: str, messages: list[dict]) -> tuple[int, bytes]:
+    """Ejecuta el driver adaptado al lenguaje del entrypoint."""
+    is_python = entrypoint.endswith(".py") or "python" in entrypoint
+    
+    if is_python:
+        driver_script = _build_python_driver_script(entrypoint, messages)
+        return sandbox.exec_run(
+            ["/usr/bin/python3", "-c", driver_script],
+        )
+    else:
+        driver_script = _build_driver_script(entrypoint, messages)
+        return sandbox.exec_run(
+            ["node", "--input-type=module", "-e", driver_script],
+        )
 
 
 def _discover_entrypoint(sandbox: SandboxContainer) -> str:
@@ -151,6 +154,57 @@ setTimeout(() => {{ server.kill(); process.exit(0); }}, {CALL_TIMEOUT_SECONDS * 
 """
 
 
+def _build_python_driver_script(entrypoint: str, messages: list[dict]) -> str:
+    """Script Python que actúa como cliente MCP usando stdio."""
+    messages_json = json.dumps(messages)
+    # Si el entrypoint ya contiene 'python3 -m', lo usamos directamente
+    cmd_args = entrypoint.split() if " " in entrypoint else ["python3", entrypoint]
+    
+    return f"""
+import subprocess
+import json
+import sys
+import time
+import threading
+
+messages = {messages_json}
+cmd = {cmd_args}
+
+proc = subprocess.Popen(
+    cmd,
+    stdin=subprocess.PIPE,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+    text=True,
+    bufsize=1,
+    cwd='/app',
+    env={{"PYTHONPATH": "/app", "PATH": "/usr/local/bin:/usr/bin:/bin"}}
+)
+
+def read_stdout():
+    for line in iter(proc.stdout.readline, ''):
+        sys.stdout.write(line)
+        sys.stdout.flush()
+
+def read_stderr():
+    for line in iter(proc.stderr.readline, ''):
+        sys.stderr.write(line)
+        sys.stderr.flush()
+
+threading.Thread(target=read_stdout, daemon=True).start()
+threading.Thread(target=read_stderr, daemon=True).start()
+
+time.sleep(1) # Wait for start
+for msg in messages:
+    proc.stdin.write(json.dumps(msg) + '\\n')
+    proc.stdin.flush()
+    time.sleep(0.5)
+
+time.sleep(2)
+proc.terminate()
+"""
+
+
 def _parse_responses(scenarios: list[TestScenario], stdout: str) -> list[MCPCallResult]:
     """Parsea las respuestas JSON-RPC del stdout del MCP server."""
     responses: dict[int, dict] = {}
@@ -176,3 +230,53 @@ def _parse_responses(scenarios: list[TestScenario], stdout: str) -> list[MCPCall
             MCPCallResult(scenario=scenario, response=response, error=error)
         )
     return results
+
+
+def discover_tools(sandbox: SandboxContainer, entrypoint: str) -> list[SkillTool]:
+    """
+    Se conecta al MCP server y envía una solicitud tools/list para obtener las herramientas reales.
+    """
+    from .models import SkillTool
+
+    # Solo handshake inicial y tools/list
+    messages = [
+        {
+            "jsonrpc": "2.0",
+            "id": 0,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "skillaudit-discoverer", "version": "0.1.0"},
+            },
+        },
+        {"jsonrpc": "2.0", "method": "notifications/initialized"},
+        {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
+    ]
+
+    exit_code, raw_output = _run_with_driver(sandbox, entrypoint, messages)
+
+    stdout_str = raw_output.decode("utf-8", errors="replace") if raw_output else ""
+    
+    # Buscar el mensaje con id 1 (respuesta a tools/list)
+    tools: list[SkillTool] = []
+    for line in stdout_str.split("\n"):
+        line = line.strip()
+        if not line: continue
+        try:
+            obj = json.loads(line)
+            if obj.get("id") == 1 and "result" in obj:
+                tools_raw = obj["result"].get("tools", [])
+                for t in tools_raw:
+                    tools.append(
+                        SkillTool(
+                            name=t.get("name", ""),
+                            description=t.get("description", ""),
+                            input_schema=t.get("inputSchema", {}),
+                        )
+                    )
+                break
+        except json.JSONDecodeError:
+            continue
+            
+    return tools

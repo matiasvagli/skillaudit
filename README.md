@@ -1,7 +1,7 @@
 # SkillAudit 🔍
 
 > **Sandbox de seguridad para MCP servers y skills de IA.**  
-> Un MCP server que audita otros MCP servers — ejecutándolos en Docker aislado y observando su comportamiento real.
+> Un MCP server que audita otros MCP servers (Node.js y Python) — ejecutándolos en Docker aislado y observando su comportamiento real.
 
 ---
 
@@ -102,6 +102,9 @@ Gemini: "¡ALERTA! El package intentó leer /root/.aws/credentials (honeypot)
 | 🚫 Red | `--network none` — sin internet |
 | 🍯 Honeypots | Credenciales falsas en `~/.aws` y `~/.ssh` |
 | 👁️ strace | Captura cada syscall (filesystem, procesos, red) |
+| 🕵️‍♂️ Multilenguaje | Soporte para Node.js (NPM) y Python (PyPI) |
+| 🛡️ Aislamiento | Ejecución sin privilegios (`no-new-privileges`) |
+| 🔍 Discovery | Descubrimiento dinámico de tools vía MCP handshake |
 | 🔒 Recursos | 50% CPU, 256 MB RAM |
 | 🤖 IA #1 | Genera test cases realistas desde la descripción |
 | 🧠 IA #2 | Compara comportamiento declarado vs real |

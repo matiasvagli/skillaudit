@@ -9,7 +9,7 @@ from .models import SkillMetadata, SkillTool
 
 def extract_metadata(package_dir: Path) -> SkillMetadata:
     """Lee package.json y README para construir SkillMetadata."""
-    pkg_json = _read_package_json(package_dir)
+    pkg_json = _read_package_json(package_dir) or _read_pyproject(package_dir) or _read_dist_info(package_dir) or {}
     readme = _read_readme(package_dir)
     tools = _extract_tools(pkg_json, package_dir)
     entrypoint = _find_entrypoint(pkg_json, package_dir)
@@ -25,12 +25,70 @@ def extract_metadata(package_dir: Path) -> SkillMetadata:
     )
 
 
-def _read_package_json(package_dir: Path) -> dict[str, Any]:
+def _read_package_json(package_dir: Path) -> dict[str, Any] | None:
     pkg_file = package_dir / "package.json"
     if not pkg_file.exists():
-        raise FileNotFoundError(f"No se encontró package.json en {package_dir}")
+        return None
     with pkg_file.open() as f:
         return json.load(f)
+
+
+def _read_pyproject(package_dir: Path) -> dict[str, Any] | None:
+    """Lee pyproject.toml si existe."""
+    try:
+        import tomllib as toml # Python 3.11+
+    except ImportError:
+        try:
+            import toml
+        except ImportError:
+            return None
+            
+    pyproject_file = package_dir / "pyproject.toml"
+    if not pyproject_file.exists():
+        return None
+        
+    with pyproject_file.open("rb") as f:
+        data = toml.load(f)
+        project = data.get("project", {})
+        return {
+            "name": project.get("name", ""),
+            "version": project.get("version", ""),
+            "description": project.get("description", ""),
+            "main": _find_python_entrypoint(data, package_dir)
+        }
+
+
+def _read_dist_info(package_dir: Path) -> dict[str, Any] | None:
+    """Busca y lee el directorio .dist-info (común en wheels)."""
+    dist_info_dirs = list(package_dir.glob("*.dist-info"))
+    if not dist_info_dirs:
+        return None
+        
+    dist_info = dist_info_dirs[0]
+    metadata_file = dist_info / "METADATA"
+    ep_file = dist_info / "entry_points.txt"
+    
+    data = {"name": "", "version": "", "description": "", "main": ""}
+    
+    if metadata_file.exists():
+        content = metadata_file.read_text(errors="replace")
+        for line in content.split("\n"):
+            if line.startswith("Name:"):
+                data["name"] = line.split(":", 1)[1].strip()
+            elif line.startswith("Version:"):
+                data["version"] = line.split(":", 1)[1].strip()
+            elif line.startswith("Summary:"):
+                data["description"] = line.split(":", 1)[1].strip()
+                
+    if ep_file.exists():
+        content = ep_file.read_text(errors="replace")
+        # Buscar algo como mcp-server-xxx = module:main
+        import re
+        m = re.search(r'[^=]+=\s*([^:]+):', content)
+        if m:
+            data["main"] = f"python3 -m {m.group(1).strip()}"
+            
+    return data
 
 
 def _read_readme(package_dir: Path) -> str:
@@ -89,12 +147,31 @@ def _find_entrypoint(pkg_json: dict[str, Any], package_dir: Path) -> str:
             return v
 
     main = pkg_json.get("main", "")
-    if main and (package_dir / main).exists():
-        return main
+    if main:
+        # Si parece ser un comando (tiene espacios o empieza por python), no verificamos archivo
+        if " " in main or main.startswith("python"):
+            return main
+        if (package_dir / main).exists():
+            return main
 
-    # Fallback: buscar index.js en dist/ o src/
-    for candidate in ["dist/index.js", "src/index.js", "index.js", "build/index.js"]:
-        if (package_dir / candidate).exists():
-            return candidate
+    # Fallback Python: buscar __main__.py recursivamente
+    for candidate in package_dir.rglob("__main__.py"):
+        if "node_modules" not in str(candidate):
+            return str(candidate.relative_to(package_dir))
 
+    # Fallback: buscar archivos comunes en la raíz
+    for name in ["index.js", "main.py"]:
+        if (package_dir / name).exists():
+            return name
+
+    return ""
+
+
+def _find_python_entrypoint(pyproject_data: dict, package_dir: Path) -> str:
+    """Busca scripts o entrypoints en la data de pyproject.toml."""
+    # Buscar scripts de MCP
+    scripts = pyproject_data.get("project", {}).get("scripts", {})
+    for name, path in scripts.items():
+        if "mcp" in name:
+            return f"python3 -m {path.split(':')[0]}"
     return ""
